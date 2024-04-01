@@ -54,7 +54,7 @@ Vec3f barycentric(Vec3f A, Vec3f B, Vec3f C, Vec3f P) {
 }
 
 
-void triangle(Vec3f *pts, float *zbuffer, TGAImage &image, TGAColor color) {
+void triangle(Vec3f *pts, Vec2i* uvs, float *zbuffer, TGAImage &image, float intensity) {
     Vec2f bboxmin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
     Vec2f bboxmax(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
     Vec2f clamp(image.get_width() - 1, image.get_height() - 1);
@@ -67,17 +67,19 @@ void triangle(Vec3f *pts, float *zbuffer, TGAImage &image, TGAColor color) {
     }
 
     Vec3f P;
-    for(P.x = bboxmin.x; P.x <= bboxmax.x; P.x++) {
-        for(P.y = bboxmin.y; P.y <= bboxmax.y; P.y++) {
+    for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++) {
+        for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++) {
+            Vec2i uvP;
             Vec3f bc = barycentric(pts[0], pts[1], pts[2], P);
-            if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
-            P.z = 0;
-            for (int i = 0; i < 3; i++) {
-                P.z += pts[i][2] * bc[i];
-            }
-            if (zbuffer[int(P.x + P.y * width)] < P.z) {
-                zbuffer[int(P.x + P.y * width)] = P.z;
-                image.set(P.x, P.y, color);
+            if (bc.x < -0.01 || bc.y < -0.01 || bc.z < -0.01) continue;
+
+            float z_interpolation = bc.x * pts[0].z + bc.y * pts[1].z + bc.z * pts[2].z;
+            uvP = uvs[0] * bc.x + uvs[1] * bc.y + uvs[2] * bc.z;
+
+            if (z_interpolation > zbuffer[static_cast<int>(P.x + P.y * width)]) {
+                zbuffer[static_cast<int>(P.x + P.y * width)] = z_interpolation;
+                TGAColor color = model->diffuse(uvP);
+                image.set(P.x, P.y, TGAColor(color.r * intensity, color.g * intensity, color.b * intensity, 255));
             }
         }
     }
@@ -100,29 +102,29 @@ int main(int argc, char** argv) {
     for(int i = width * height; i--; zbuffer[i] = -std::numeric_limits<float>::max());
 
     TGAImage image(width, height, TGAImage::RGB);
-    Vec3f light_dir(1,0,-1);
+    Vec3f light_dir(0,0,-1);
 
     for (int i = 0; i < model->nfaces(); i++) {
         std::vector<int> face = model->face(i);
 
         Vec3f pts[3];
+        Vec3f world_coords[3];
         for (int j = 0; j < 3; j++) {
+            world_coords[j]  = model->vert(face[j]);
             pts[j] = world2screen(model->vert(face[j]));
         }
 
-        // Light
-        Vec2i screen_coords[3];
-        Vec3f world_coords[3];
-        for (int j = 0; j < 3; j++) {
-            Vec3f v = model->vert(face[j]);
-            screen_coords[j] = Vec2i((v.x+1.)*width/2., (v.y+1.)*height/2.);
-            world_coords[j]  = v;
-        }
         Vec3f n = cross((world_coords[2]-world_coords[0]), (world_coords[1]-world_coords[0]));
         n.normalize();
-        float intensity = n*light_dir;
+        float intensity = n * light_dir;
 
-        triangle(pts, zbuffer, image, TGAColor(intensity*255, intensity*255, intensity*255, 255));
+        if (intensity > 0) {
+            Vec2i uv[3];
+            for (int j = 0; j < 3; j++) {
+                uv[j] = model->uv(i, j);
+            }
+            triangle(pts, uv, zbuffer, image, intensity);
+        }
     }
 
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
