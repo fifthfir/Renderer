@@ -35,13 +35,13 @@ Model::Model(const char *filename) : verts_(), faces_(), norms_(), uv_() {
             }
             faces_.push_back(f);
 
-        } else if (!line.compare(0, 3, "vt  ")) {
+        } else if (!line.compare(0, 3, "vt ")) {
             iss >> trash >> trash;
             Vec2f uv;
             for (int i = 0; i < 2; i++) iss >> uv[i];
             uv_.push_back(uv);
 
-        } else if (!line.compare(0, 3, "vn  ")) {
+        } else if (!line.compare(0, 3, "vn ")) {
             iss >> trash >> trash;
             Vec3f normal;
             for (int i = 0; i < 3; i++) iss >> normal[i];
